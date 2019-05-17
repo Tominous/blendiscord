@@ -5,13 +5,13 @@ Tip of the day - consult Blender's built-in templates if confused.
 '''
 bl_info = {
     "name": "Discord Rich Presence",
-    "description": "Adds Discord Rich Presence support to Blender",
+    "description": "Brings Discord Rich Presence support to Blender",
     "author": "@AlexApps#9295",
-    "version": (0, 2),
+    "version": (0, 3),
     "blender": (2, 80, 0),
     "location": "Preferences > Addons",
     "warning": "Beta - Still in development!",
-    "wiki_url": "https://github.com/AlexApps99/blender-rich-presence/wiki",
+    "wiki_url": "https://github.com/AlexApps99/blender-rich-presence/README.md",
     "tracker_url": "https://github.com/AlexApps99/blender-rich-presence/issues",
     "support": "COMMUNITY",
     "category": "System"
@@ -20,9 +20,9 @@ bl_info = {
 from time import time
 from os import getpid
 from threading import Timer # Find another way to thread
-from pypresence import Presence # Discord Rich Presence - todo error handle when discord closed
+from pypresence import Presence # Discord Rich Presence - todo error handle when discord is closed
 import bpy # Blender imports
-from bpy.types import AddonPreferences
+from bpy.types import AddonPreferences, Operator
 from bpy.props import BoolProperty, IntProperty, EnumProperty, StringProperty
 
 # UI Options
@@ -37,7 +37,7 @@ texts = [("filename", "Filename", "e.g untitled.blend"),
          ("version", "Blender Version", "e.g Blender 2.80.0"),
          ("renderer", "Renderer", "e.g Cycles"),
          ("space", "Current Space", "e.g Movie Clip Editor"),
-         ("mode", "3D View Mode", "e.g Object Mode"),
+         ("mode", "3D View Mode", "e.g Editing Mesh"),
          ("objects", "Objects", "e.g 10/102 Objects selected"),
          ("custom", "Custom String", "e.g Happy Blending!")]
 # Blender status to formatted text
@@ -62,7 +62,7 @@ modes = {'EDIT_MESH': 'Editing Mesh',
 renderers = {'BLENDER_EEVEE': 'Eevee',
              'BLENDER_WORKBENCH': 'Workbench',
              'CYCLES': 'Cycles'}
-spaces = {'EMPTY': 'Empty',
+spaces = {'EMPTY': 'None',
           'VIEW_3D': '3D Viewport',
           'IMAGE_EDITOR': 'Image/UV Editor',
           'NODE_EDITOR': 'Node Editor',
@@ -81,22 +81,16 @@ spaces = {'EMPTY': 'Empty',
           'FILE_BROWSER': 'File Browser',
           'PREFERENCES': 'Preferences'}
 
-start_time = int(time())
-ver = 'Blender {}.{}.{}'.format(bpy.app.version[0], bpy.app.version[1], bpy.app.version[2])
-pid = getpid()
-prefs = bpy.context.preferences.addons[__name__].preferences
-RPC = Presence('434079082339106827')
-
 class DiscordAddonPreferences(AddonPreferences):
     bl_idname = __name__
 
     enablerp = BoolProperty(
-        name="Enable Rich Presence",
+        name="Enable Rich Presence (unused)",
         description="Enables connection to Discord for Rich Presence",
         default=False
     )
     interval = IntProperty(
-        name="Update Interval (s)",
+        name="Update Interval (s) (unused)",
         description="Interval between Rich Presence Updates (in seconds)",
         default=15,
         min=1,
@@ -159,44 +153,44 @@ class DiscordAddonPreferences(AddonPreferences):
         layout.prop(self, "smalltext")
         layout.prop(self, "customtext")
 
-def updatePresence():
-    Timer(prefs.interval, updatePresence).start()
-    if prefs.enablerp:
-        filename = bpy.path.basename(bpy.context.blend_data.filepath)
-        if filename == "":
-            filename = "untitled.blend"
-        mode = modes[bpy.context.mode]
-        if bpy.context.engine in renderers:
-            renderer = renderers[bpy.context.engine]
+start_time = int(time())
+RPC = Presence('434079082339106827')
+RPC.connect()
+class updateRichPresence(Operator):
+    """My Object Moving Script"""
+    bl_idname = "wm.updaterp"
+    bl_label = "Update Discord Rich Presence"
+    bl_options = {'REGISTER', 'UNDO'}
+    def execute(self, context):
+        prefs = bpy.context.preferences.addons[__name__].preferences
+        #Timer(prefs.interval, updatePresence).start()
+        if prefs.enablerp:
+            outputs=["untitled.blend" if bpy.path.basename(bpy.context.blend_data.filepath) == "" else bpy.path.basename(bpy.context.blend_data.filepath),
+                     'Blender {}.{}.{}'.format(bpy.app.version[0], bpy.app.version[1], bpy.app.version[2]),
+                     renderers[bpy.context.engine] if bpy.context.engine in renderers else "Unknown Renderer ({})".format(bpy.context.engine),
+                     spaces[bpy.context.space_data.type],
+                     modes[bpy.context.mode],
+                     len(bpy.context.selected_objects)+"/"+len(bpy.context.scene.objects)+" objects selected",
+                     prefs.customtext]
+            RPC.update(pid=getpid(),
+                       details=outputs[prefs.details],
+                       state=outputs[prefs.state],
+                       start=start_time,
+                       large_image=prefs.largeimage, large_text=outputs[prefs.largetext],
+                       small_image=prefs.smallimage, small_text=outputs[prefs.smalltext])
         else:
-            renderer = "Unknown Renderer ({})".format(bpy.context.engine)
-        space = spaces[bpy.context.space_data.type]
-        objects = [len(bpy.context.selected_objects), len(bpy.context.scene.objects)]
-        RPC.update(pid=pid,
-                   details=renderer,
-	               state=filename,
-	               start=start_time,
-	               large_image=prefs.largeimage, large_text=editor,
-	               small_image=prefs.smallimage, small_text=ver)
-    else:
-        RPC.clear(pid=pid)
+            RPC.clear(pid=getpid())
+        return {'FINISHED'}
 
 def register():
     bpy.utils.register_class(DiscordAddonPreferences)
+    bpy.utils.register_class(updateRichPresence)
 
 def unregister():
-    bpy.utils.unregister_class(DiscordAddonPreferences)
-
-def onstart():
-    RPC.connect()
-
-def onfinish():
-    RPC.clear(pid=pid)
+    RPC.clear(pid=getpid())
     RPC.close()
-
-def onstartrp():
-    onstart()
-    updatePresence()
+    bpy.utils.unregister_class(updateRichPresence)
+    bpy.utils.unregister_class(DiscordAddonPreferences)
 
 if __name__ == "__main__":
     register()
