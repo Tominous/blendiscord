@@ -163,7 +163,7 @@ class updateRichPresence(Operator):
     bl_options = {'REGISTER', 'UNDO'}
     def execute(self, context):
         prefs = bpy.context.preferences.addons[__name__].preferences
-        #Timer(prefs.interval, updatePresence).start()
+        Timer(prefs.interval, updatePresence).start()
         if prefs.enablerp:
             outputs=["untitled.blend" if bpy.path.basename(bpy.context.blend_data.filepath) == "" else bpy.path.basename(bpy.context.blend_data.filepath),
                      'Blender {}.{}.{}'.format(bpy.app.version[0], bpy.app.version[1], bpy.app.version[2]),
